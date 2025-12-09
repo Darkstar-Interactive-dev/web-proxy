@@ -393,6 +393,78 @@ export default async function handler(req, res) {
               }
               return originalReplace.call(window.location, url);
             };
+
+            // Watch for dynamically added elements and fix their URLs
+            const observer = new MutationObserver(function(mutations) {
+              mutations.forEach(function(mutation) {
+                mutation.addedNodes.forEach(function(node) {
+                  if (node.nodeType === 1) { // Element node
+                    // Fix iframes
+                    if (node.tagName === 'IFRAME' && node.src) {
+                      const src = node.getAttribute('src');
+                      if (src && !src.includes(proxyBase) && !src.startsWith('data:') && !src.startsWith('blob:')) {
+                        node.src = resolveUrl(src);
+                      }
+                    }
+
+                    // Fix scripts
+                    if (node.tagName === 'SCRIPT' && node.src) {
+                      const src = node.getAttribute('src');
+                      if (src && !src.includes(proxyBase) && !src.startsWith('data:') && !src.startsWith('blob:')) {
+                        node.src = resolveUrl(src);
+                      }
+                    }
+
+                    // Fix images
+                    if (node.tagName === 'IMG' && node.src) {
+                      const src = node.getAttribute('src');
+                      if (src && !src.includes(proxyBase) && !src.startsWith('data:') && !src.startsWith('blob:')) {
+                        node.src = resolveUrl(src);
+                      }
+                    }
+
+                    // Fix links
+                    if (node.tagName === 'LINK' && node.href) {
+                      const href = node.getAttribute('href');
+                      if (href && !href.includes(proxyBase) && !href.startsWith('data:') && !href.startsWith('blob:')) {
+                        node.href = resolveUrl(href);
+                      }
+                    }
+
+                    // Fix nested elements
+                    const iframes = node.querySelectorAll ? node.querySelectorAll('iframe[src]') : [];
+                    iframes.forEach(function(iframe) {
+                      const src = iframe.getAttribute('src');
+                      if (src && !src.includes(proxyBase) && !src.startsWith('data:') && !src.startsWith('blob:')) {
+                        iframe.src = resolveUrl(src);
+                      }
+                    });
+
+                    const scripts = node.querySelectorAll ? node.querySelectorAll('script[src]') : [];
+                    scripts.forEach(function(script) {
+                      const src = script.getAttribute('src');
+                      if (src && !src.includes(proxyBase) && !src.startsWith('data:') && !src.startsWith('blob:')) {
+                        script.src = resolveUrl(src);
+                      }
+                    });
+
+                    const images = node.querySelectorAll ? node.querySelectorAll('img[src]') : [];
+                    images.forEach(function(img) {
+                      const src = img.getAttribute('src');
+                      if (src && !src.includes(proxyBase) && !src.startsWith('data:') && !src.startsWith('blob:')) {
+                        img.src = resolveUrl(src);
+                      }
+                    });
+                  }
+                });
+              });
+            });
+
+            // Start observing
+            observer.observe(document.documentElement, {
+              childList: true,
+              subtree: true
+            });
           })();
         </script>
       `);
