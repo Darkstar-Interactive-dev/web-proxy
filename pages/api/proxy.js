@@ -344,19 +344,43 @@ export default async function handler(req, res) {
               }
             }, true); // Use capture phase to catch it early
 
-            // Also intercept window.location changes
-            const originalLocationSetter = Object.getOwnPropertyDescriptor(window, 'location').set;
-            Object.defineProperty(window, 'location', {
-              get: function() { return window.location; },
-              set: function(value) {
-                if (typeof value === 'string' && !value.includes(proxyBase)) {
-                  const absoluteUrl = value.startsWith('http') ? value : new URL(value, targetOrigin).href;
-                  originalLocationSetter.call(window, proxyBase + encodeURIComponent(absoluteUrl));
-                } else {
-                  originalLocationSetter.call(window, value);
-                }
+            // Intercept window.location.href changes (safer than redefining location)
+            const locationDescriptor = Object.getOwnPropertyDescriptor(window.location.constructor.prototype, 'href');
+            if (locationDescriptor && locationDescriptor.set) {
+              const originalHrefSetter = locationDescriptor.set;
+              Object.defineProperty(window.location.constructor.prototype, 'href', {
+                get: locationDescriptor.get,
+                set: function(value) {
+                  if (typeof value === 'string' && !value.includes(proxyBase)) {
+                    const absoluteUrl = value.startsWith('http') ? value : new URL(value, targetOrigin).href;
+                    originalHrefSetter.call(this, proxyBase + encodeURIComponent(absoluteUrl));
+                  } else {
+                    originalHrefSetter.call(this, value);
+                  }
+                },
+                configurable: true
+              });
+            }
+
+            // Intercept window.location.assign
+            const originalAssign = window.location.assign;
+            window.location.assign = function(url) {
+              if (typeof url === 'string' && !url.includes(proxyBase)) {
+                const absoluteUrl = url.startsWith('http') ? url : new URL(url, targetOrigin).href;
+                return originalAssign.call(window.location, proxyBase + encodeURIComponent(absoluteUrl));
               }
-            });
+              return originalAssign.call(window.location, url);
+            };
+
+            // Intercept window.location.replace
+            const originalReplace = window.location.replace;
+            window.location.replace = function(url) {
+              if (typeof url === 'string' && !url.includes(proxyBase)) {
+                const absoluteUrl = url.startsWith('http') ? url : new URL(url, targetOrigin).href;
+                return originalReplace.call(window.location, proxyBase + encodeURIComponent(absoluteUrl));
+              }
+              return originalReplace.call(window.location, url);
+            };
           })();
         </script>
       `);
