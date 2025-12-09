@@ -164,6 +164,22 @@ export default async function handler(req, res) {
 
             // Helper to resolve URLs
             function resolveUrl(url) {
+              // Handle non-string inputs
+              if (!url) return url;
+
+              // Convert URL objects to strings
+              if (typeof url === 'object' && url.href) {
+                url = url.href;
+              }
+
+              // Ensure it's a string
+              url = String(url);
+
+              // Skip empty strings, data URLs, blob URLs, and javascript URLs
+              if (!url || url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('javascript:')) {
+                return url;
+              }
+
               if (url.includes(proxyBase)) {
                 return url; // Already proxied
               }
@@ -188,7 +204,12 @@ export default async function handler(req, res) {
               }
 
               // Handle relative URLs
-              return proxyBase + encodeURIComponent(new URL(url, targetOrigin).href);
+              try {
+                return proxyBase + encodeURIComponent(new URL(url, targetOrigin).href);
+              } catch (e) {
+                // If URL parsing fails, return as-is
+                return url;
+              }
             }
 
             // Override fetch to route through proxy
