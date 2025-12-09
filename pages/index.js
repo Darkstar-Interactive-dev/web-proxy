@@ -3,19 +3,19 @@ import Head from 'next/head';
 
 export default function Home() {
   const [url, setUrl] = useState('');
-  const [proxyUrl, setProxyUrl] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (url) {
-      const encodedUrl = encodeURIComponent(url);
-      setProxyUrl(`/api/proxy?url=${encodedUrl}`);
+      // Add https:// if no protocol specified
+      let fullUrl = url;
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        fullUrl = 'https://' + url;
+      }
+      const encodedUrl = encodeURIComponent(fullUrl);
+      // Navigate directly to the proxy URL instead of using iframe
+      window.location.href = `/api/proxy?url=${encodedUrl}`;
     }
-  };
-
-  const handleBack = () => {
-    setProxyUrl('');
-    setUrl('');
   };
 
   return (
@@ -27,51 +27,34 @@ export default function Home() {
       </Head>
 
       <main className="main">
-        {!proxyUrl ? (
-          <div className="form-container">
-            <h1 className="title">Web Proxy</h1>
-            <p className="description">Enter a URL to browse through the proxy</p>
+        <div className="form-container">
+          <h1 className="title">Web Proxy</h1>
+          <p className="description">Enter a URL to browse through the proxy</p>
 
-            <form onSubmit={handleSubmit} className="form">
-              <input
-                type="text"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://example.com"
-                className="input"
-                required
-              />
-              <button type="submit" className="button">
-                Go
-              </button>
-            </form>
-
-            <div className="info">
-              <h2>Features:</h2>
-              <ul>
-                <li>Browse websites through proxy</li>
-                <li>Automatic URL rewriting</li>
-                <li>Support for images, CSS, and JavaScript</li>
-                <li>Works with most gaming websites</li>
-              </ul>
-            </div>
-          </div>
-        ) : (
-          <div className="iframe-container">
-            <div className="toolbar">
-              <button onClick={handleBack} className="back-button">
-                ← Back
-              </button>
-              <div className="url-display">{url}</div>
-            </div>
-            <iframe
-              src={proxyUrl}
-              className="proxy-frame"
-              title="Proxied content"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          <form onSubmit={handleSubmit} className="form">
+            <input
+              type="text"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="example.com"
+              className="input"
+              required
             />
+            <button type="submit" className="button">
+              Go
+            </button>
+          </form>
+
+          <div className="info">
+            <h2>Features:</h2>
+            <ul>
+              <li>Browse websites through proxy</li>
+              <li>Automatic URL rewriting</li>
+              <li>Support for images, CSS, and JavaScript</li>
+              <li>Works with most gaming websites</li>
+            </ul>
           </div>
-        )}
+        </div>
       </main>
 
       <style jsx>{`
@@ -182,57 +165,6 @@ export default function Home() {
 
         .info li {
           margin: 0.5rem 0;
-        }
-
-        .iframe-container {
-          width: 100%;
-          height: 100vh;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .toolbar {
-          background: white;
-          padding: 1rem;
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .back-button {
-          padding: 0.5rem 1rem;
-          font-size: 1rem;
-          font-weight: 600;
-          color: white;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          border: none;
-          border-radius: 8px;
-          cursor: pointer;
-          transition: transform 0.2s;
-        }
-
-        .back-button:hover {
-          transform: translateY(-1px);
-        }
-
-        .url-display {
-          flex: 1;
-          padding: 0.5rem 1rem;
-          background: #f5f5f5;
-          border-radius: 8px;
-          font-family: monospace;
-          font-size: 0.9rem;
-          color: #666;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .proxy-frame {
-          flex: 1;
-          width: 100%;
-          border: none;
         }
 
         @media (max-width: 600px) {
