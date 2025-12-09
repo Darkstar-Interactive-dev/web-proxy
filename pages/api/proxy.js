@@ -128,6 +128,29 @@ export default async function handler(req, res) {
         }
       });
 
+      // Rewrite manifest links
+      $('link[rel="manifest"]').each((i, elem) => {
+        const href = $(elem).attr('href');
+        if (href) {
+          const absoluteUrl = new URL(href, url).href;
+          $(elem).attr('href', proxyBase + encodeURIComponent(absoluteUrl));
+        }
+      });
+
+      // Rewrite all other link tags with href
+      $('link[href]').each((i, elem) => {
+        const href = $(elem).attr('href');
+        const rel = $(elem).attr('rel');
+        if (href && rel !== 'stylesheet' && rel !== 'manifest') {
+          try {
+            const absoluteUrl = new URL(href, url).href;
+            $(elem).attr('href', proxyBase + encodeURIComponent(absoluteUrl));
+          } catch (e) {
+            // Skip invalid URLs
+          }
+        }
+      });
+
       // Inject JavaScript to handle dynamic URL changes and fix fetch
       $('head').prepend(`
         <script>
@@ -139,24 +162,41 @@ export default async function handler(req, res) {
             const proxyBase = '/api/proxy?url=';
             const targetOrigin = window.__PROXY_TARGET__;
 
+            // Helper to resolve URLs
+            function resolveUrl(url) {
+              if (url.includes(proxyBase)) {
+                return url; // Already proxied
+              }
+
+              // Handle absolute URLs
+              if (url.startsWith('http://') || url.startsWith('https://')) {
+                // Check if it's pointing to the proxy domain - convert to target
+                if (url.includes(window.location.host)) {
+                  return url;
+                }
+                return proxyBase + encodeURIComponent(url);
+              }
+
+              // Handle protocol-relative URLs
+              if (url.startsWith('//')) {
+                return proxyBase + encodeURIComponent('https:' + url);
+              }
+
+              // Handle root-relative URLs
+              if (url.startsWith('/')) {
+                return proxyBase + encodeURIComponent(targetOrigin + url);
+              }
+
+              // Handle relative URLs
+              return proxyBase + encodeURIComponent(new URL(url, targetOrigin).href);
+            }
+
             // Override fetch to route through proxy
             const originalFetch = window.fetch;
             window.fetch = function(input, options) {
-              let url = typeof input === 'string' ? input : input.url;
-
-              // Skip if already proxied
-              if (url.includes(proxyBase)) {
-                return originalFetch(input, options);
-              }
-
-              // Convert relative URLs to absolute
               try {
-                if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                  url = new URL(url, targetOrigin).href;
-                }
-
-                // Route through proxy
-                const proxiedUrl = proxyBase + encodeURIComponent(url);
+                let url = typeof input === 'string' ? input : input.url;
+                const proxiedUrl = resolveUrl(url);
 
                 if (typeof input === 'string') {
                   return originalFetch(proxiedUrl, options);
@@ -175,17 +215,32 @@ export default async function handler(req, res) {
             // Override XMLHttpRequest
             const originalOpen = XMLHttpRequest.prototype.open;
             XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-              if (typeof url === 'string' && !url.includes(proxyBase)) {
-                try {
-                  if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                    url = new URL(url, targetOrigin).href;
-                  }
-                  url = proxyBase + encodeURIComponent(url);
-                } catch (e) {
-                  console.error('XHR proxy error:', e);
+              try {
+                if (typeof url === 'string') {
+                  url = resolveUrl(url);
                 }
+              } catch (e) {
+                console.error('XHR proxy error:', e);
               }
               return originalOpen.call(this, method, url, ...rest);
+            };
+
+            // Override document.createElement to intercept dynamic script/link creation
+            const originalCreateElement = document.createElement;
+            document.createElement = function(tagName) {
+              const element = originalCreateElement.call(document, tagName);
+
+              if (tagName.toLowerCase() === 'script') {
+                const originalSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
+                Object.defineProperty(element, 'src', {
+                  get: originalSrcDescriptor.get,
+                  set: function(value) {
+                    originalSrcDescriptor.set.call(this, resolveUrl(value));
+                  }
+                });
+              }
+
+              return element;
             };
           })();
         </script>
