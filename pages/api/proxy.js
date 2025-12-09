@@ -246,7 +246,7 @@ export default async function handler(req, res) {
               return originalOpen.call(this, method, url, ...rest);
             };
 
-            // Override document.createElement to intercept dynamic script/link creation
+            // Override document.createElement to intercept dynamic script/link/iframe creation
             const originalCreateElement = document.createElement;
             document.createElement = function(tagName) {
               const element = originalCreateElement.call(document, tagName);
@@ -257,6 +257,36 @@ export default async function handler(req, res) {
                   get: originalSrcDescriptor.get,
                   set: function(value) {
                     originalSrcDescriptor.set.call(this, resolveUrl(value));
+                  }
+                });
+              }
+
+              if (tagName.toLowerCase() === 'iframe') {
+                const originalSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'src');
+                Object.defineProperty(element, 'src', {
+                  get: originalSrcDescriptor.get,
+                  set: function(value) {
+                    originalSrcDescriptor.set.call(this, resolveUrl(value));
+                  }
+                });
+              }
+
+              if (tagName.toLowerCase() === 'img') {
+                const originalSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+                Object.defineProperty(element, 'src', {
+                  get: originalSrcDescriptor.get,
+                  set: function(value) {
+                    originalSrcDescriptor.set.call(this, resolveUrl(value));
+                  }
+                });
+              }
+
+              if (tagName.toLowerCase() === 'link') {
+                const originalHrefDescriptor = Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype, 'href');
+                Object.defineProperty(element, 'href', {
+                  get: originalHrefDescriptor.get,
+                  set: function(value) {
+                    originalHrefDescriptor.set.call(this, resolveUrl(value));
                   }
                 });
               }
