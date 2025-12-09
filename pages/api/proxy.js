@@ -10,14 +10,11 @@ export const config = {
 export default async function handler(req, res) {
   const { url } = req.query;
 
-  // Set CORS headers for all responses
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-
-  // Handle preflight OPTIONS request
+  // Handle preflight OPTIONS request early
   if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', '*');
     return res.status(200).end();
   }
 
@@ -66,6 +63,21 @@ export default async function handler(req, res) {
     const response = await axios(requestConfig);
 
     const contentType = response.headers['content-type'] || '';
+
+    // Strip security headers that prevent resource loading
+    delete response.headers['content-security-policy'];
+    delete response.headers['content-security-policy-report-only'];
+    delete response.headers['x-frame-options'];
+    delete response.headers['x-content-type-options'];
+    delete response.headers['referrer-policy'];
+
+    // Set permissive CORS and security headers for all responses
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
+    res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
 
     // Handle HTML content - rewrite URLs
     if (contentType.includes('text/html')) {
