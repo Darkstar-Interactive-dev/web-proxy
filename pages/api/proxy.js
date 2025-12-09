@@ -10,6 +10,17 @@ export const config = {
 export default async function handler(req, res) {
   const { url } = req.query;
 
+  // Set CORS headers for all responses
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  // Handle preflight OPTIONS request
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (!url) {
     return res.status(400).json({ error: 'URL parameter is required' });
   }
@@ -23,8 +34,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid URL format' });
     }
 
-    // Fetch the content
-    const response = await axios.get(url, {
+    // Prepare request configuration
+    const requestConfig = {
+      method: req.method || 'GET',
+      url: url,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -39,7 +52,18 @@ export default async function handler(req, res) {
       validateStatus: function (status) {
         return status < 500; // Accept any status code less than 500
       }
-    });
+    };
+
+    // Add request body for POST/PUT requests
+    if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
+      requestConfig.data = req.body;
+      if (req.headers['content-type']) {
+        requestConfig.headers['Content-Type'] = req.headers['content-type'];
+      }
+    }
+
+    // Fetch the content
+    const response = await axios(requestConfig);
 
     const contentType = response.headers['content-type'] || '';
 
@@ -104,21 +128,64 @@ export default async function handler(req, res) {
         }
       });
 
-      // Add base tag to help with relative URLs
-      $('head').prepend(`<base href="${baseUrl}/">`);
-
-      // Inject JavaScript to handle dynamic URL changes
-      $('head').append(`
+      // Inject JavaScript to handle dynamic URL changes and fix fetch
+      $('head').prepend(`
         <script>
+          // Store the actual target origin
+          window.__PROXY_TARGET__ = '${targetUrl.origin}';
+          window.__PROXY_BASE_URL__ = '${url}';
+
           (function() {
             const proxyBase = '/api/proxy?url=';
+            const targetOrigin = window.__PROXY_TARGET__;
+
+            // Override fetch to route through proxy
             const originalFetch = window.fetch;
-            window.fetch = function(url, options) {
-              if (typeof url === 'string' && !url.startsWith(proxyBase)) {
-                const absoluteUrl = new URL(url, window.location.href).href;
-                return originalFetch(proxyBase + encodeURIComponent(absoluteUrl), options);
+            window.fetch = function(input, options) {
+              let url = typeof input === 'string' ? input : input.url;
+
+              // Skip if already proxied
+              if (url.includes(proxyBase)) {
+                return originalFetch(input, options);
               }
-              return originalFetch(url, options);
+
+              // Convert relative URLs to absolute
+              try {
+                if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                  url = new URL(url, targetOrigin).href;
+                }
+
+                // Route through proxy
+                const proxiedUrl = proxyBase + encodeURIComponent(url);
+
+                if (typeof input === 'string') {
+                  return originalFetch(proxiedUrl, options);
+                } else {
+                  return originalFetch(proxiedUrl, {
+                    ...options,
+                    method: input.method || options?.method,
+                  });
+                }
+              } catch (e) {
+                console.error('Fetch proxy error:', e);
+                return originalFetch(input, options);
+              }
+            };
+
+            // Override XMLHttpRequest
+            const originalOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+              if (typeof url === 'string' && !url.includes(proxyBase)) {
+                try {
+                  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                    url = new URL(url, targetOrigin).href;
+                  }
+                  url = proxyBase + encodeURIComponent(url);
+                } catch (e) {
+                  console.error('XHR proxy error:', e);
+                }
+              }
+              return originalOpen.call(this, method, url, ...rest);
             };
           })();
         </script>
@@ -153,14 +220,32 @@ export default async function handler(req, res) {
       return res.status(response.status).send(response.data);
     }
 
+    // Handle WebAssembly
+    if (contentType.includes('application/wasm') || url.endsWith('.wasm')) {
+      res.setHeader('Content-Type', 'application/wasm');
+      return res.status(response.status).send(response.data);
+    }
+
     // Handle images and other binary content
     if (contentType.includes('image/') || contentType.includes('application/octet-stream')) {
       res.setHeader('Content-Type', contentType);
       return res.status(response.status).send(response.data);
     }
 
+    // Handle fonts
+    if (contentType.includes('font/') || url.match(/\.(woff|woff2|ttf|otf|eot)$/i)) {
+      res.setHeader('Content-Type', contentType || 'font/woff2');
+      return res.status(response.status).send(response.data);
+    }
+
+    // Handle video/audio
+    if (contentType.includes('video/') || contentType.includes('audio/')) {
+      res.setHeader('Content-Type', contentType);
+      return res.status(response.status).send(response.data);
+    }
+
     // Default: pass through content
-    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Type', contentType || 'application/octet-stream');
     return res.status(response.status).send(response.data);
 
   } catch (error) {
