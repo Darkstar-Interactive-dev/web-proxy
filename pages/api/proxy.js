@@ -263,6 +263,52 @@ export default async function handler(req, res) {
 
               return element;
             };
+
+            // Intercept all clicks on links to keep them in the proxy
+            document.addEventListener('click', function(e) {
+              let target = e.target;
+
+              // Find the closest anchor tag
+              while (target && target.tagName !== 'A') {
+                target = target.parentElement;
+              }
+
+              if (target && target.tagName === 'A' && target.href) {
+                const href = target.href;
+
+                // Skip if already proxied or is a special URL
+                if (href.includes(proxyBase) || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('#')) {
+                  return;
+                }
+
+                // Prevent default navigation
+                e.preventDefault();
+                e.stopPropagation();
+
+                // Get the absolute URL
+                let absoluteUrl = href;
+                if (!href.startsWith('http://') && !href.startsWith('https://')) {
+                  absoluteUrl = new URL(href, targetOrigin).href;
+                }
+
+                // Navigate through the proxy
+                window.location.href = proxyBase + encodeURIComponent(absoluteUrl);
+              }
+            }, true); // Use capture phase to catch it early
+
+            // Also intercept window.location changes
+            const originalLocationSetter = Object.getOwnPropertyDescriptor(window, 'location').set;
+            Object.defineProperty(window, 'location', {
+              get: function() { return window.location; },
+              set: function(value) {
+                if (typeof value === 'string' && !value.includes(proxyBase)) {
+                  const absoluteUrl = value.startsWith('http') ? value : new URL(value, targetOrigin).href;
+                  originalLocationSetter.call(window, proxyBase + encodeURIComponent(absoluteUrl));
+                } else {
+                  originalLocationSetter.call(window, value);
+                }
+              }
+            });
           })();
         </script>
       `);
