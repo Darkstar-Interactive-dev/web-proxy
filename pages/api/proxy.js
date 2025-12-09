@@ -273,11 +273,19 @@ export default async function handler(req, res) {
                 target = target.parentElement;
               }
 
-              if (target && target.tagName === 'A' && target.href) {
-                const href = target.href;
+              if (target && target.tagName === 'A') {
+                // Use getAttribute to get the original href value, not the resolved one
+                const hrefAttr = target.getAttribute('href');
 
-                // Skip if already proxied or is a special URL
-                if (href.includes(proxyBase) || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('#')) {
+                if (!hrefAttr) return;
+
+                // Skip if is a special URL
+                if (hrefAttr.startsWith('javascript:') || hrefAttr.startsWith('mailto:') || hrefAttr === '#') {
+                  return;
+                }
+
+                // Skip if already proxied
+                if (hrefAttr.includes(proxyBase)) {
                   return;
                 }
 
@@ -285,10 +293,20 @@ export default async function handler(req, res) {
                 e.preventDefault();
                 e.stopPropagation();
 
-                // Get the absolute URL
-                let absoluteUrl = href;
-                if (!href.startsWith('http://') && !href.startsWith('https://')) {
-                  absoluteUrl = new URL(href, targetOrigin).href;
+                // Convert to absolute URL
+                let absoluteUrl;
+                if (hrefAttr.startsWith('http://') || hrefAttr.startsWith('https://')) {
+                  absoluteUrl = hrefAttr;
+                } else if (hrefAttr.startsWith('//')) {
+                  absoluteUrl = 'https:' + hrefAttr;
+                } else if (hrefAttr.startsWith('/')) {
+                  absoluteUrl = targetOrigin + hrefAttr;
+                } else if (hrefAttr.startsWith('#')) {
+                  // Hash-only link, stay on same page
+                  return;
+                } else {
+                  // Relative URL
+                  absoluteUrl = new URL(hrefAttr, window.__PROXY_BASE_URL__).href;
                 }
 
                 // Navigate through the proxy
